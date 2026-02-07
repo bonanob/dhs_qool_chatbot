@@ -657,7 +657,7 @@ if mode == "Ask a Question":
             assistant_text = ""
             streaming_placeholder = st.empty()
             if len(st.session_state.messages) > 1:
-                time.sleep(1)
+                time.sleep(2)
             for chunk in stream_gemini_response(
                 messages=st.session_state.messages[-MAX_HISTORY_MESSAGES:],
                 system_prompt=st.session_state.system_prompt,
