@@ -688,6 +688,7 @@ if mode == "Ask a Question":
             st.markdown("</div>", unsafe_allow_html=True)
 
         st.session_state.messages.append({"role": "assistant", "content": assistant_text})
+        st.rerun()
 
     # Intentionally no footer banner to keep the UI minimal.
 
