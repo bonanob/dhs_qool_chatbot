@@ -12,6 +12,7 @@ DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
 MAX_FAQ_CHARS = 30000
 MAX_HISTORY_MESSAGES = 12
 FAQ_PDF_PATH = os.path.join(os.path.dirname(__file__), "prompts", "faq.pdf")
+FAQ_EXTRA_PATH = os.path.join(os.path.dirname(__file__), "prompts", "faq_extra.txt")
 
 
 def get_model_name():
@@ -542,13 +543,23 @@ def load_local_faq(file_path: str) -> str:
             return extract_pdf_cached(f.read())
     return ""
 
+
+@st.cache_data(show_spinner=False)
+def load_faq_extra(file_path: str) -> str:
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    return ""
+
 if "faq_text" not in st.session_state:
     st.session_state.faq_text = ""
     st.session_state.faq_source = ""
     st.session_state.faq_warned = False
     local_text = load_local_faq(FAQ_PDF_PATH)
-    if local_text:
-        st.session_state.faq_text = local_text
+    extra_text = load_faq_extra(FAQ_EXTRA_PATH)
+    combined = "\n\n".join([t for t in [local_text, extra_text] if t])
+    if combined:
+        st.session_state.faq_text = combined
         st.session_state.faq_source = "local"
         if len(st.session_state.faq_text) > MAX_FAQ_CHARS:
             st.session_state.faq_text = st.session_state.faq_text[:MAX_FAQ_CHARS]
