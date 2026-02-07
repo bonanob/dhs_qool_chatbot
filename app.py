@@ -454,6 +454,28 @@ st.markdown(
         font-weight: 500;
         margin-top: 0;
     }
+    /* Force light booking form controls on Cloud */
+    .booking-form input,
+    .booking-form textarea,
+    .booking-form select {
+        background: #ffffff !important;
+        color: #111111 !important;
+    }
+    .booking-form div[data-baseweb="input"] > div,
+    .booking-form div[data-baseweb="textarea"] > div,
+    .booking-form div[data-baseweb="select"] > div,
+    .booking-form div[data-baseweb="select"] {
+        background: #ffffff !important;
+        border: 1px solid #E6E6E2 !important;
+        box-shadow: none !important;
+    }
+    .booking-form div[data-baseweb="select"] span,
+    .booking-form div[data-baseweb="select"] input {
+        color: #111111 !important;
+    }
+    .booking-form div[data-baseweb="select"] svg {
+        fill: #111111 !important;
+    }
     .booking-form button[data-testid="stBaseButton-secondary"] {
         background: #111111 !important;
         color: #ffffff !important;
