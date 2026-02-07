@@ -1,5 +1,7 @@
 ﻿import os
 import streamlit as st
+from google import genai
+from google.genai import types
 try:
     import tomllib  # py3.11+
 except Exception:  # pragma: no cover
@@ -24,22 +26,22 @@ def build_system_prompt(faq_text: str) -> str:
     return base + "\n\nFAQ:\n" + faq_block
 
 
-def _to_gemini_messages(messages):
-    gemini_messages = []
+def _to_gemini_contents(messages):
+    contents = []
     for msg in messages:
         role = msg.get("role")
         content = msg.get("content", "")
-        if role == "assistant":
-            gemini_role = "model"
-        else:
-            gemini_role = "user"
-        gemini_messages.append({"role": gemini_role, "parts": [content]})
-    return gemini_messages
+        gemini_role = "model" if role == "assistant" else "user"
+        contents.append(types.Content(role=gemini_role, parts=[types.Part(text=content)]))
+    return contents
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def get_model(model_name: str, system_prompt: str):
-    import google.generativeai as genai
+    api_key = _get_api_key()
+    if api_key:
+        return genai.Client(api_key=api_key)
+    return genai.Client()
 
     genai.configure(api_key=_get_api_key())
     return genai.GenerativeModel(
@@ -77,15 +79,23 @@ def stream_gemini_response(messages, system_prompt, model_name="gemini-2.5-flash
         return
 
     try:
-        model = get_model(model_name, system_prompt)
-        history = _to_gemini_messages(messages)
-        stream = model.generate_content(history, stream=True)
+        client = get_model(model_name, system_prompt)
+        history = _to_gemini_contents(messages)
+        stream = client.models.generate_content_stream(
+            model=model_name,
+            contents=history,
+            config=types.GenerateContentConfig(system_instruction=system_prompt),
+        )
         for chunk in stream:
             text = getattr(chunk, "text", "")
             if text:
                 yield text
     except Exception as exc:
+        debug = str(os.getenv("DEBUG_LLM", "")).strip().lower() in {"1", "true", "yes", "on"}
         msg = str(exc)
+        if debug:
+            yield f"[LLM error] {msg}"
+            return
         if "ResourceExhausted" in msg or "429" in msg:
             yield "You’ve hit the free-tier rate limit. Please wait a bit and try again."
         else:
