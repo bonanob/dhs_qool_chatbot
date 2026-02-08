@@ -106,7 +106,7 @@ if "booking_id_counter" not in st.session_state:
     st.session_state.booking_id_counter = 0
 
 st.sidebar.title(APP_TITLE)
-mode = st.sidebar.radio("Choose a mode", ["Ask a Question", "Book a Room"], index=0)
+mode = st.sidebar.radio("Choose a mode", ["Book a Room"], index=0)
 
 st.sidebar.markdown("---")
 
@@ -130,7 +130,7 @@ st.markdown(
     .block-container {
         max-width: 980px;
         padding-top: 6.5rem;
-        padding-bottom: 8rem;
+        padding-bottom: 12rem;
     }
     /* Sidebar harmonization */
     section[data-testid="stSidebar"] {
@@ -413,6 +413,10 @@ st.markdown(
         flex-direction: column;
         gap: 20px;
         margin-top: 2rem;
+        padding-bottom: 12rem;
+    }
+    .chat-end-spacer {
+        height: 140px;
     }
     .bubble {
         max-width: 70%;
@@ -589,7 +593,7 @@ if "model_warmed" not in st.session_state:
     st.session_state.model_warmed = True
     _ = get_model(model_name, st.session_state.system_prompt)
 
-if mode == "Ask a Question":
+if mode == "Ask a Question" and False:
     st.markdown('<div class="codex-subtitle">Qool Frontdesk</div>', unsafe_allow_html=True)
     st.markdown('<div class="codex-title">What can I help with?</div>', unsafe_allow_html=True)
     thinking_placeholder = st.empty()
@@ -652,6 +656,7 @@ if mode == "Ask a Question":
                     f'<div class="bubble {css_role}">{msg["content"]}</div>',
                     unsafe_allow_html=True,
                 )
+            st.markdown('<div class="chat-end-spacer"></div>', unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
     if st.session_state.pending_prompt:
@@ -685,6 +690,7 @@ if mode == "Ask a Question":
                     f'<div class="bubble assistant">{assistant_text}</div>',
                     unsafe_allow_html=True,
                 )
+            st.markdown('<div class="chat-end-spacer"></div>', unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
         st.session_state.messages.append({"role": "assistant", "content": assistant_text})
