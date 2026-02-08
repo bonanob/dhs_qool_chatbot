@@ -7,7 +7,7 @@ import streamlit as st
 from llm import stream_gemini_response, build_system_prompt, get_model
 from pdf_utils import extract_pdf_text
 
-APP_TITLE = "Community Room Assistant"
+APP_TITLE = "Qool Frontdesk"
 DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
 MAX_FAQ_CHARS = 30000
 MAX_HISTORY_MESSAGES = 12
@@ -63,8 +63,8 @@ def reset_booking_form():
     st.session_state.end_time_3 = time_options(7, 22, start_minute=30)[0]
 
 def mark_booking_submit():
-    st.session_state.booking_submit_inflight = True
     st.session_state.last_booking_submit = time.time()
+    st.session_state.booking_click_nonce = st.session_state.get("booking_click_nonce", 0) + 1
 
 def make_submission_id():
     year = datetime.utcnow().year
@@ -100,13 +100,100 @@ if "booking_status" not in st.session_state:
     st.session_state.booking_status = None
 if "booking_submit_inflight" not in st.session_state:
     st.session_state.booking_submit_inflight = False
+if "last_booking_hash" not in st.session_state:
+    st.session_state.last_booking_hash = ""
+if "last_booking_hash_time" not in st.session_state:
+    st.session_state.last_booking_hash_time = 0.0
 if "booking_id_year" not in st.session_state:
     st.session_state.booking_id_year = datetime.utcnow().year
 if "booking_id_counter" not in st.session_state:
     st.session_state.booking_id_counter = 0
 
-st.sidebar.title(APP_TITLE)
-mode = st.sidebar.radio("Choose a mode", ["Book a Room"], index=0)
+UI_TEXT = {
+    "de": {
+        "app_title": "Qool Frontdesk",
+        "sidebar_mode": "Modus waehlen",
+        "book_room": "Raum buchen",
+        "booking_form": "Buchungsformular",
+        "full_name": "Vor- und Nachname",
+        "organization": "Organisation (optional)",
+        "address": "Adresse",
+        "email": "E-Mail",
+        "occasion": "Zweck",
+        "people_count": "Anzahl Personen",
+        "usage_frequency": "Nutzungsart",
+        "one_time": "Einmalig",
+        "weekly": "Woechentlich",
+        "monthly": "Monatlich",
+        "cleaning_requested": "Reinigung gewuenscht (20 Euro)",
+        "date": "Datum",
+        "start_time": "Startzeit",
+        "end_time": "Endzeit",
+        "add_date": "Zusaetzlicher Termin",
+        "add_another_date": "Weiteren Termin hinzufuegen",
+        "backup_date_1": "Alternativtermin 1",
+        "backup_date_2": "Alternativtermin 2",
+        "notes": "Notizen (optional)",
+        "submit_booking": "Buchungsanfrage senden",
+        "success": "Buchungsanfrage gesendet.",
+        "error_name": "Name ist erforderlich.",
+        "error_email": "Gueltige E-Mail ist erforderlich.",
+        "error_address": "Adresse ist erforderlich.",
+        "error_people": "Anzahl Personen muss mindestens 1 sein.",
+        "error_time_range": "Buchungszeiten muessen zwischen 7:00 und 22:00 liegen.",
+        "error_duration": "Buchung muss mindestens 30 Minuten dauern und Endzeit nach Startzeit liegen.",
+        "error_backup1_range": "Alternativtermin 1: Zeiten muessen zwischen 7:00 und 22:00 liegen.",
+        "error_backup1_duration": "Alternativtermin 1 muss mindestens 30 Minuten dauern.",
+        "error_backup2_range": "Alternativtermin 2: Zeiten muessen zwischen 7:00 und 22:00 liegen.",
+        "error_backup2_duration": "Alternativtermin 2 muss mindestens 30 Minuten dauern.",
+        "sheet_missing": "SHEETS_WEBHOOK_URL ist nicht gesetzt; Buchung nur in dieser Sitzung gespeichert.",
+    },
+    "en": {
+        "app_title": "Qool Frontdesk",
+        "sidebar_mode": "Choose a mode",
+        "book_room": "Book a Room",
+        "booking_form": "Booking Form",
+        "full_name": "Full name",
+        "organization": "Organization (optional)",
+        "address": "Address",
+        "email": "Email",
+        "occasion": "Occasion",
+        "people_count": "Number of people",
+        "usage_frequency": "Usage frequency",
+        "one_time": "One-time",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "cleaning_requested": "Cleaning requested (20 Euros)",
+        "date": "Date",
+        "start_time": "Start time",
+        "end_time": "End time",
+        "add_date": "Add date",
+        "add_another_date": "Add another date",
+        "backup_date_1": "Backup date 1",
+        "backup_date_2": "Backup date 2",
+        "notes": "Notes (optional)",
+        "submit_booking": "Submit booking request",
+        "success": "Booking request submitted.",
+        "error_name": "Name is required.",
+        "error_email": "Valid email is required.",
+        "error_address": "Address is required.",
+        "error_people": "Number of people must be at least 1.",
+        "error_time_range": "Booking times must be between 7:00 and 22:00.",
+        "error_duration": "Booking must be at least 30 minutes, with end time after start time.",
+        "error_backup1_range": "Backup date 1 times must be between 7:00 and 22:00.",
+        "error_backup1_duration": "Backup date 1 must be at least 30 minutes.",
+        "error_backup2_range": "Backup date 2 times must be between 7:00 and 22:00.",
+        "error_backup2_duration": "Backup date 2 must be at least 30 minutes.",
+        "sheet_missing": "SHEETS_WEBHOOK_URL is not set; booking saved only for this session.",
+    },
+}
+
+lang = st.sidebar.selectbox("Language", ["Deutsch", "English"], index=0, key="ui_language")
+lang_key = "de" if lang == "Deutsch" else "en"
+T = UI_TEXT[lang_key]
+
+st.sidebar.title(T["app_title"])
+mode = st.sidebar.radio(T["sidebar_mode"], [T["book_room"]], index=0)
 
 st.sidebar.markdown("---")
 
@@ -301,36 +388,48 @@ st.markdown(
     }
     /* Make booking inputs match date/time height */
     div[data-testid="stTextInput"] input[aria-label="Full name"],
+    div[data-testid="stTextInput"] input[aria-label="Vor- und Nachname"],
     div[data-testid="stTextInput"] input[aria-label="Email"],
-    div[data-testid="stTextInput"] input[aria-label="Occasion"] {
+    div[data-testid="stTextInput"] input[aria-label="E-Mail"],
+    div[data-testid="stTextInput"] input[aria-label="Occasion"],
+    div[data-testid="stTextInput"] input[aria-label="Zweck"] {
         font-size: 16px;
         padding: 6px 12px;
         height: 38px;
     }
-    div[data-testid="stTextInput"] input[aria-label="Organization (optional)"] {
+    div[data-testid="stTextInput"] input[aria-label="Organization (optional)"],
+    div[data-testid="stTextInput"] input[aria-label="Organisation (optional)"] {
         font-size: 16px;
         padding: 6px 12px;
         height: 38px;
     }
     /* Make booking inputs transparent without affecting chat input */
     div[data-testid="stTextInput"]:has(input[aria-label="Full name"]),
+    div[data-testid="stTextInput"]:has(input[aria-label="Vor- und Nachname"]),
     div[data-testid="stTextInput"]:has(input[aria-label="Email"]),
-    div[data-testid="stTextInput"]:has(input[aria-label="Occasion"]) {
+    div[data-testid="stTextInput"]:has(input[aria-label="E-Mail"]),
+    div[data-testid="stTextInput"]:has(input[aria-label="Occasion"]),
+    div[data-testid="stTextInput"]:has(input[aria-label="Zweck"]) {
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
     }
-    div[data-testid="stTextInput"]:has(input[aria-label="Organization (optional)"]) {
+    div[data-testid="stTextInput"]:has(input[aria-label="Organization (optional)"]),
+    div[data-testid="stTextInput"]:has(input[aria-label="Organisation (optional)"]) {
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
     }
     div[data-testid="stTextInput"] input[aria-label="Full name"],
+    div[data-testid="stTextInput"] input[aria-label="Vor- und Nachname"],
     div[data-testid="stTextInput"] input[aria-label="Email"],
-    div[data-testid="stTextInput"] input[aria-label="Occasion"] {
+    div[data-testid="stTextInput"] input[aria-label="E-Mail"],
+    div[data-testid="stTextInput"] input[aria-label="Occasion"],
+    div[data-testid="stTextInput"] input[aria-label="Zweck"] {
         background: transparent !important;
     }
-    div[data-testid="stTextInput"] input[aria-label="Organization (optional)"] {
+    div[data-testid="stTextInput"] input[aria-label="Organization (optional)"],
+    div[data-testid="stTextInput"] input[aria-label="Organisation (optional)"] {
         background: transparent !important;
     }
     div[data-testid="stTextInput"] input::placeholder {
@@ -416,7 +515,7 @@ st.markdown(
         padding-bottom: 12rem;
     }
     .chat-end-spacer {
-        height: 140px;
+        height: 220px;
     }
     .bubble {
         max-width: 70%;
@@ -657,7 +756,17 @@ if mode == "Ask a Question" and False:
                     unsafe_allow_html=True,
                 )
             st.markdown('<div class="chat-end-spacer"></div>', unsafe_allow_html=True)
+            st.markdown('<div id="chat-end"></div>', unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
+            st.components.v1.html(
+                """
+                <script>
+                  const end = window.parent.document.getElementById('chat-end');
+                  if (end) { end.scrollIntoView({behavior: 'smooth', block: 'end'}); }
+                </script>
+                """,
+                height=0,
+            )
 
     if st.session_state.pending_prompt:
         user_text = st.session_state.pending_prompt
@@ -691,15 +800,25 @@ if mode == "Ask a Question" and False:
                     unsafe_allow_html=True,
                 )
             st.markdown('<div class="chat-end-spacer"></div>', unsafe_allow_html=True)
+            st.markdown('<div id="chat-end"></div>', unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
+            st.components.v1.html(
+                """
+                <script>
+                  const end = window.parent.document.getElementById('chat-end');
+                  if (end) { end.scrollIntoView({behavior: 'smooth', block: 'end'}); }
+                </script>
+                """,
+                height=0,
+            )
 
         st.session_state.messages.append({"role": "assistant", "content": assistant_text})
         st.rerun()
 
     # Intentionally no footer banner to keep the UI minimal.
 
-elif mode == "Book a Room":
-    st.subheader("Booking Form")
+elif mode == T["book_room"]:
+    st.subheader(T["booking_form"])
 
     if st.session_state.reset_booking_form_pending:
         reset_booking_form()
@@ -709,64 +828,64 @@ elif mode == "Book a Room":
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
-            full_name = st.text_input("Full name", key="full_name")
+            full_name = st.text_input(T["full_name"], key="full_name")
         with col2:
-            organization = st.text_input("Organization (optional)", key="organization")
+            organization = st.text_input(T["organization"], key="organization")
 
-        address = st.text_area("Address", key="address", height=80)
+        address = st.text_area(T["address"], key="address", height=80)
 
         col3, col4 = st.columns(2)
         with col3:
-            email = st.text_input("Email", key="email")
+            email = st.text_input(T["email"], key="email")
         with col4:
-            occasion = st.text_input("Occasion", key="occasion")
+            occasion = st.text_input(T["occasion"], key="occasion")
 
         col5, col6, col7 = st.columns(3)
         with col5:
-            people_count = st.number_input("Number of people", min_value=1, step=1, key="people_count")
+            people_count = st.number_input(T["people_count"], min_value=1, step=1, key="people_count")
         with col6:
-            usage_frequency = st.selectbox("Usage frequency", ["One-time", "Weekly", "Monthly"], key="usage_frequency")
+            usage_frequency = st.selectbox(T["usage_frequency"], [T["one_time"], T["weekly"], T["monthly"]], key="usage_frequency")
         with col7:
-            cleaning_requested = st.checkbox("Cleaning requested (20 Euros)", value=False, key="cleaning_requested")
+            cleaning_requested = st.checkbox(T["cleaning_requested"], value=False, key="cleaning_requested")
 
-        booking_date = st.date_input("Date", min_value=date.today(), key="date_1")
+        booking_date = st.date_input(T["date"], min_value=date.today(), key="date_1")
 
         col8, col9, col10 = st.columns([1, 1, 1])
         with col8:
-            start_time = st.selectbox("Start time", time_options(7, 21), key="start_time_1", format_func=lambda t: t.strftime("%H:%M"))
+            start_time = st.selectbox(T["start_time"], time_options(7, 21), key="start_time_1", format_func=lambda t: t.strftime("%H:%M"))
         with col9:
-            end_time = st.selectbox("End time", time_options(7, 22, start_minute=30), key="end_time_1", format_func=lambda t: t.strftime("%H:%M"))
+            end_time = st.selectbox(T["end_time"], time_options(7, 22, start_minute=30), key="end_time_1", format_func=lambda t: t.strftime("%H:%M"))
         with col10:
-            add_date_2 = st.checkbox("Add date", value=False, key="add_date_2")
+            add_date_2 = st.checkbox(T["add_date"], value=False, key="add_date_2")
 
         booking_date_2 = None
         start_time_2 = None
         end_time_2 = None
         add_date_3 = False
         if add_date_2:
-            booking_date_2 = st.date_input("Backup date 1", min_value=date.today(), key="date_2")
+            booking_date_2 = st.date_input(T["backup_date_1"], min_value=date.today(), key="date_2")
 
             col11, col12, col13 = st.columns([1, 1, 1])
             with col11:
-                start_time_2 = st.selectbox("Start time", time_options(7, 21), key="start_time_2", format_func=lambda t: t.strftime("%H:%M"))
+                start_time_2 = st.selectbox(T["start_time"], time_options(7, 21), key="start_time_2", format_func=lambda t: t.strftime("%H:%M"))
             with col12:
-                end_time_2 = st.selectbox("End time", time_options(7, 22, start_minute=30), key="end_time_2", format_func=lambda t: t.strftime("%H:%M"))
+                end_time_2 = st.selectbox(T["end_time"], time_options(7, 22, start_minute=30), key="end_time_2", format_func=lambda t: t.strftime("%H:%M"))
             with col13:
-                add_date_3 = st.checkbox("Add another date", value=False, key="add_date_3")
+                add_date_3 = st.checkbox(T["add_another_date"], value=False, key="add_date_3")
 
         booking_date_3 = None
         start_time_3 = None
         end_time_3 = None
         if add_date_3:
-            booking_date_3 = st.date_input("Backup date 2", min_value=date.today(), key="date_3")
+            booking_date_3 = st.date_input(T["backup_date_2"], min_value=date.today(), key="date_3")
 
             col14, col15, _ = st.columns([1, 1, 1])
             with col14:
-                start_time_3 = st.selectbox("Start time", time_options(7, 21), key="start_time_3", format_func=lambda t: t.strftime("%H:%M"))
+                start_time_3 = st.selectbox(T["start_time"], time_options(7, 21), key="start_time_3", format_func=lambda t: t.strftime("%H:%M"))
             with col15:
-                end_time_3 = st.selectbox("End time", time_options(7, 22, start_minute=30), key="end_time_3", format_func=lambda t: t.strftime("%H:%M"))
+                end_time_3 = st.selectbox(T["end_time"], time_options(7, 22, start_minute=30), key="end_time_3", format_func=lambda t: t.strftime("%H:%M"))
 
-        notes = st.text_area("Notes (optional)", key="notes")
+        notes = st.text_area(T["notes"], key="notes")
         status_placeholder = st.empty()
         if st.session_state.booking_status:
             level, msg = st.session_state.booking_status
@@ -778,31 +897,25 @@ elif mode == "Book a Room":
                 status_placeholder.warning(msg)
 
         cooldown = (time.time() - st.session_state.last_booking_submit) < 5
-        missing_required = (
-            not full_name.strip()
-            or not email.strip()
-            or "@" not in email
-            or not address.strip()
-            or people_count < 1
-        )
         submitted = st.button(
-            "Submit booking request",
-            disabled=cooldown or missing_required or st.session_state.booking_submit_inflight,
+            T["submit_booking"],
+            disabled=cooldown or st.session_state.booking_submit_inflight,
             on_click=mark_booking_submit,
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
     if submitted:
+        st.session_state.booking_submit_inflight = True
         st.session_state.booking_status = None
         errors = []
         if not full_name.strip():
-            errors.append("Name is required.")
+            errors.append(T["error_name"])
         if not email.strip() or "@" not in email:
-            errors.append("Valid email is required.")
+            errors.append(T["error_email"])
         if not address.strip():
-            errors.append("Address is required.")
+            errors.append(T["error_address"])
         if people_count < 1:
-            errors.append("Number of people must be at least 1.")
+            errors.append(T["error_people"])
         def minutes_between(t_start, t_end):
             return (t_end.hour * 60 + t_end.minute) - (t_start.hour * 60 + t_start.minute)
 
@@ -810,25 +923,58 @@ elif mode == "Book a Room":
             return dt_time(7, 0) <= t <= dt_time(22, 0)
 
         if not in_range(start_time) or not in_range(end_time):
-            errors.append("Booking times must be between 7:00 and 22:00.")
+            errors.append(T["error_time_range"])
         if start_time >= end_time or minutes_between(start_time, end_time) < 30:
-            errors.append("Booking must be at least 30 minutes, with end time after start time.")
+            errors.append(T["error_duration"])
         if booking_date_2 and start_time_2 and end_time_2:
             if not in_range(start_time_2) or not in_range(end_time_2):
-                errors.append("Backup date 1 times must be between 7:00 and 22:00.")
+                errors.append(T["error_backup1_range"])
             if start_time_2 >= end_time_2 or minutes_between(start_time_2, end_time_2) < 30:
-                errors.append("Backup date 1 must be at least 30 minutes, with end time after start time.")
+                errors.append(T["error_backup1_duration"])
         if booking_date_3 and start_time_3 and end_time_3:
             if not in_range(start_time_3) or not in_range(end_time_3):
-                errors.append("Backup date 2 times must be between 7:00 and 22:00.")
+                errors.append(T["error_backup2_range"])
             if start_time_3 >= end_time_3 or minutes_between(start_time_3, end_time_3) < 30:
-                errors.append("Backup date 2 must be at least 30 minutes, with end time after start time.")
+                errors.append(T["error_backup2_duration"])
 
         if errors:
             st.session_state.booking_submit_inflight = False
             for err in errors:
                 st.error(err)
         else:
+            # Deduplicate identical submissions within 10 seconds
+            booking_hash = "|".join(
+                [
+                    full_name.strip(),
+                    organization.strip(),
+                    address.strip(),
+                    email.strip(),
+                    occasion.strip(),
+                    str(int(people_count)),
+                    usage_frequency,
+                    "1" if cleaning_requested else "0",
+                    booking_date.isoformat(),
+                    start_time.strftime("%H:%M"),
+                    end_time.strftime("%H:%M"),
+                    booking_date_2.isoformat() if booking_date_2 else "",
+                    start_time_2.strftime("%H:%M") if start_time_2 else "",
+                    end_time_2.strftime("%H:%M") if end_time_2 else "",
+                    booking_date_3.isoformat() if booking_date_3 else "",
+                    start_time_3.strftime("%H:%M") if start_time_3 else "",
+                    end_time_3.strftime("%H:%M") if end_time_3 else "",
+                    notes.strip(),
+                ]
+            )
+            now = time.time()
+            if (
+                booking_hash == st.session_state.last_booking_hash
+                and (now - st.session_state.last_booking_hash_time) < 10
+            ):
+                st.session_state.booking_submit_inflight = False
+                st.stop()
+            st.session_state.last_booking_hash = booking_hash
+            st.session_state.last_booking_hash_time = now
+
             booking = {
                 "name": full_name.strip(),
                 "organization": organization.strip(),
@@ -875,7 +1021,7 @@ elif mode == "Book a Room":
                         st.session_state.booking_submit_inflight = False
                     else:
                         st.session_state.bookings.append(booking)
-                        st.session_state.booking_status = ("success", "Booking request submitted.")
+                        st.session_state.booking_status = ("success", T["success"])
                         st.session_state.booking_submit_inflight = False
                         st.session_state.reset_booking_form_pending = True
                         st.rerun()
@@ -884,7 +1030,7 @@ elif mode == "Book a Room":
                     st.session_state.booking_submit_inflight = False
             else:
                 st.session_state.bookings.append(booking)
-                st.session_state.booking_status = ("warning", "SHEETS_WEBHOOK_URL is not set; booking saved only for this session.")
+                st.session_state.booking_status = ("warning", T["sheet_missing"])
                 st.session_state.booking_submit_inflight = False
                 st.session_state.reset_booking_form_pending = True
                 st.rerun()
